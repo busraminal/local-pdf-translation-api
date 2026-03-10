@@ -1,6 +1,5 @@
 
 
-```markdown
 # NLLB-200 & PyMuPDF Tabanlı TR↔EN PDF Çeviri Servisi
 
 Bu proje, **tamamen lokal çalışan**, **Python tabanlı** bir **TR↔EN çeviri servisi** sağlar.  
@@ -145,4 +144,4 @@ translate/
 
 ```
 
-```
+
