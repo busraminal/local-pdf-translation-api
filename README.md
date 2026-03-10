@@ -1,62 +1,148 @@
-# Python NLLB-200 Çeviri Servisi
 
-Bu proje, `facebook/nllb-200-distilled-600M` modelini kullanan bir Python çeviri API servisidir.
 
-- **Backend**: FastAPI
-- **Model**: `facebook/nllb-200-distilled-600M` (Meta NLLB-200, Hugging Face üzerinden)
-- **Entegrasyon**: .NET uygulamaları için JSON tabanlı REST API ve isteğe bağlı streaming endpoint.
+```markdown
+# NLLB-200 & PyMuPDF Tabanlı TR↔EN PDF Çeviri Servisi
 
-## Kurulum
+Bu proje, **tamamen lokal çalışan**, **Python tabanlı** bir **TR↔EN çeviri servisi** sağlar.  
+Amaç: PDF yüklendiğinde içeriğini Türkçe ↔ İngilizce arasında çevirmek ve mümkün olduğunca **layout’u koruyarak** bunu dış sistemler (.NET vb.) için **HTTP API** olarak sunmaktır.
 
+---
+
+## 🚀 Özellikler
+- **Tamamen Lokal**:
+  - Metin çevirisi için `facebook/nllb-200-distilled-600M`
+  - TR→EN için ek olarak `Helsinki-NLP/opus-mt-tr-en`
+  - PDF içerik okuma için `pypdf`
+  - Layout’u yaklaşık koruyan PDF yazımı için `PyMuPDF (fitz)`
+- **HTTP API (FastAPI)**:
+  - `POST /translate` – Düz metin için JSON tabanlı çeviri
+  - `POST /translate-pdf` – PDF metnini çıkarıp çeviren endpoint (metin döner)
+  - `POST /translate-pdf-layout` – PDF’i **yaklaşık layout ile** çevirip yeni PDF döndüren endpoint
+  - `POST /translate-stream` – Streaming çeviri
+  - `GET /health` – Sağlık kontrolü
+- **Kolay Entegrasyon**: .NET, diğer backend’ler veya frontend tarafı için sadece HTTP çağrısı yeterli.
+- **Geleceğe Dönük Azure Entegrasyonu**: `azure_config.py` + `azure_document_translation.py` ile Azure Document Translation gateway’i için iskelet hazır.
+
+---
+
+## 🛠 Kurulum
+
+### 1. Depoyu Klonla
 ```bash
-cd translate
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+git clone [https://github.com/](https://github.com/)<kullanıcı-adı>/<repo-adı>.git
+cd <repo-adı>
+
 ```
 
-## Çalıştırma
+### 2. Sanal Ortam (Venv)
+
+```bash
+python -m venv .venv
+# Aktifleştir (Windows PowerShell):
+.\.venv\Scripts\activate
+
+```
+
+### 3. Bağımlılıklar
+
+```bash
+pip install -r requirements.txt
+
+```
+
+> **Not:** İlk çalıştırmada çeviri modelleri Hugging Face’ten indirileceği için yaklaşık 3 GB disk alanı gerekir. Sonraki çalıştırmalarda modeller diskten (cache) yüklenir.
+
+---
+
+## 💻 Çalıştırma
+
+### Sunucuyu Başlat
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
 ```
 
-## Örnek İstek (REST)
+Konsolda `Uvicorn running on http://0.0.0.0:8000` satırını gördüğünüzde API hazırdır.
 
-```http
-POST http://localhost:8000/translate
-Content-Type: application/json
+### Erişim
 
+* **Swagger UI:** [http://localhost:8000/docs](https://www.google.com/search?q=http://localhost:8000/docs)
+* **Sağlık Kontrolü:** [http://localhost:8000/health](https://www.google.com/search?q=http://localhost:8000/health)
+
+---
+
+## 📡 API Özeti
+
+### 1. Düz Metin Çevirisi – `POST /translate`
+
+**İstek (JSON):**
+
+```json
 {
   "text": "Merhaba dünya",
   "source_lang": "tur_Latn",
   "target_lang": "eng_Latn"
 }
+
 ```
 
-Yanıt:
+### 2. Layout Korumalı PDF Çevirisi – `POST /translate-pdf-layout`
 
-```json
-{
-  "translated_text": "Hello world"
-}
-```
+Bu endpoint:
 
-## Örnek İstek (.NET HttpClient)
+* PDF’i PyMuPDF ile açar.
+* Metin bloklarını koordinatlarıyla çıkarır.
+* Her bloğu çevirip aynı koordinatlara (`insert_textbox`) yazar.
+* Yeni bir PDF dosyası döner.
+
+---
+
+## 🔗 .NET Entegrasyon Örneği (C#)
 
 ```csharp
-var client = new HttpClient();
-var body = new
-{
-    text = "Merhaba dünya",
-    source_lang = "tur_Latn",
-    target_lang = "eng_Latn"
-};
+using var form = new MultipartFormDataContent();
+await using var fs = File.OpenRead("input.pdf");
+var fileContent = new StreamContent(fs);
+fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
 
-var response = await client.PostAsJsonAsync("http://localhost:8000/translate", body);
-response.EnsureSuccessStatusCode();
+form.Add(fileContent, "file", "input.pdf");
+form.Add(new StringContent("tur_Latn"), "source_lang");
+form.Add(new StringContent("eng_Latn"), "target_lang");
 
-var json = await response.Content.ReadAsStringAsync();
-// json -> translated_text alanını parse edin
+var response = await client.PostAsync("/translate-pdf-layout", form);
+if (response.IsSuccessStatusCode) {
+    var outStream = await response.Content.ReadAsStreamAsync();
+    using var outFile = File.Create("translated.pdf");
+    await outStream.CopyToAsync(outFile);
+}
+
 ```
 
+---
+
+## 📂 Klasör Yapısı
+
+```text
+translate/
+├── app/
+│   └── main.py                  # FastAPI uygulaması (endpoint'ler)
+├── azure_config.py              # Azure ayarları (opsiyonel)
+├── azure_document_translation.py# Azure Document Translation iskeleti
+├── requirements.txt             # Python bağımlılıkları
+├── dotnet/                      # Örnek .NET istemci kodları
+└── .venv/                       # Sanal ortam
+
+```
+
+---
+
+## ⚠️ Kısıtlar ve Notlar
+
+* **Layout:** Çok kolonlu ve karmaşık tablolarda %100 koruma garanti edilmez.
+* **Performans:** Servis ilk açılışta modelleri RAM'e yüklediği için biraz yavaş başlayabilir.
+* **Gizlilik:** Varsayılan akış tamamen lokaldir; PDF içeriği dışarı gönderilmez.
+
+```
+
+```
